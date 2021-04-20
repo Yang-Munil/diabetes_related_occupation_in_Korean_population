@@ -1,0 +1,698 @@
+---
+title: '후보변수_5개결과_별도파일_0419'
+author: "김우리"
+date: '2021.4.19'
+output: html_document
+---
+
+```{r 후보변수_5개결과_별도파일_0419, message=FALSE, warning=FALSE}
+
+#### 남녀 데이터 분할후 각각 로지스틱 ####
+
+library(haven)
+library(dplyr)
+library(ggplot2)
+library(gmodels)
+library(agricolae)
+library(survey)
+library(car)
+library(sqldf)
+library(ROCR)
+library(DT)
+library(knitr)
+library(moonBook)
+library(jtools)
+library(ggplot2)
+library(interactions)
+library(sandwich)
+library(ResourceSelection)
+library(stargazer)
+library(effects)
+
+# install.packages("sandwich")
+# install.packages("interactions")
+# install.packages("jtools")
+# install.packages("moonBook")
+# install.packages("knitr")
+# install.packages("DT")
+# install.packages("ROCR")
+# install.packages("car")
+# install.packages("ResourceSelection")
+
+hn_all <- read.csv("C:/rproject/startr/hn_all.csv")
+
+hn_all <- subset(hn_all, select = -c(X))
+
+## 영양변수 결측치 제거
+
+hn_all <- hn_all[complete.cases(hn_all[, c("N_EN", "N_SUGAR")]), ] # 16357 > 14313 (2044 제거)
+
+
+# 경우의 수 보기 위한 추가 전처리
+
+# 연령
+
+hn_all$age_cate[hn_all$age>=19 & hn_all$age<=39]=1
+hn_all$age_cate[hn_all$age>=40 & hn_all$age<=49]=2
+hn_all$age_cate[hn_all$age>=50 & hn_all$age<=59]=3
+hn_all$age_cate[hn_all$age>=60 & hn_all$age<=69]=4
+hn_all$age_cate[hn_all$age>=70]=5
+
+# BMI 저체중 / 정상 / 비만으로 나누기.
+
+hn_all$HE_BMI_cate = 1
+hn_all$HE_BMI_cate[hn_all$HE_BMI>=18.5]=2
+hn_all$HE_BMI_cate[hn_all$HE_BMI>=25]=3
+
+# edu 초중/고/대 3개로 나누기
+
+hn_all$edu3G[hn_all$edu == 1] <- 1
+hn_all$edu3G[hn_all$edu == 2] <- 1
+hn_all$edu3G[hn_all$edu == 3] <- 2
+hn_all$edu3G[hn_all$edu == 4] <- 3
+
+
+### 범주형 factor 처리
+
+hn_all$year <- as.factor(hn_all$year)
+
+hn_all$occp <- as.factor(hn_all$occp)
+
+hn_all$edu <- as.factor(hn_all$edu)
+
+hn_all$edu3G <- as.factor(hn_all$edu3G)
+
+hn_all$BS3_1 <- as.factor(hn_all$BS3_1)
+
+hn_all$EC_wht_5 <- as.factor(hn_all$EC_wht_5)
+
+hn_all$marri_1 <- as.factor(hn_all$marri_1)
+
+hn_all$sm_presnt <- as.factor(hn_all$sm_presnt)
+
+hn_all$dr_month <- as.factor(hn_all$dr_month)
+
+hn_all$pa_walk <- as.factor(hn_all$pa_walk)
+
+hn_all$pa_aerobic <- as.factor(hn_all$pa_aerobic)
+
+hn_all$HE_BMI_band <- as.factor(hn_all$HE_BMI_band)
+
+hn_all$HE_BMI_cate <- as.factor(hn_all$HE_BMI_cate)
+
+# hn_all$age_cate <- as.factor(hn_all$age_cate)
+
+# hn_all$age_band <- as.factor(hn_all$age_band)
+
+hn_all$ainc_band <- as.factor(hn_all$ainc_band)
+
+hn_all$incm <- as.factor(hn_all$incm)
+
+hn_all$mh_stress <- as.factor(hn_all$mh_stress)
+
+hn_all$BP6_10 <- as.factor(hn_all$BP6_10)
+
+hn_all$BP5 <- as.factor(hn_all$BP5)
+
+
+
+
+########### 직업군 3개로 묶기 ############
+
+# Manual workers were elementary workers, craft and related trades workers, equipment, machine operation and assembling workers, and agricultural, forestry and fishery workers.
+
+#  Non-manual workers consisted of clerks, professionals and related workers, managers.
+
+# The rest are Service/sales workers.
+
+# 1. 관리자, 전문가 및 관련 종사자
+# 2. 사무종사자
+# 3. 서비스 및 판매 종사자
+# 4. 농림어업 숙련 종사자
+# 5. 기능원, 장치․기계조작 및 조립종사자
+# 6. 단순노무종사자
+# 7. 무직(주부, 학생 등)
+
+# Manual workers(4,5,6) = 1 / Non-manual workers(1,2) = 2 / Service/sales workers(3) = 3 / not employed(7) = 4
+# 직업그룹 4개
+
+hn_all$occp4G[hn_all$occp == 4] <- 1
+hn_all$occp4G[hn_all$occp == 5] <- 1
+hn_all$occp4G[hn_all$occp == 6] <- 1
+hn_all$occp4G[hn_all$occp == 1] <- 2
+hn_all$occp4G[hn_all$occp == 2] <- 2
+hn_all$occp4G[hn_all$occp == 3] <- 3
+hn_all$occp4G[hn_all$occp == 7] <- 4
+
+hn_all$occp4G <- as.factor(hn_all$occp4G)
+
+
+#  농촌블루칼라(4) = 1 / white(1,2) = 2 / 도시블루칼라(5,6) = 3 / Service/sales workers(3) = 4 / not employed(7) = 5
+# 직업그룹 5개
+
+hn_all$occp5G[hn_all$occp == 4] <- 1
+hn_all$occp5G[hn_all$occp == 5] <- 3
+hn_all$occp5G[hn_all$occp == 6] <- 3
+hn_all$occp5G[hn_all$occp == 1] <- 2
+hn_all$occp5G[hn_all$occp == 2] <- 2
+hn_all$occp5G[hn_all$occp == 3] <- 4
+hn_all$occp5G[hn_all$occp == 7] <- 5
+
+hn_all$occp5G <- as.factor(hn_all$occp5G)
+
+# 서비스직 vs 나머지
+
+hn_all$occp_inter[hn_all$occp == 7] <- 1
+hn_all$occp_inter[hn_all$occp == 4] <- 1
+hn_all$occp_inter[hn_all$occp == 5] <- 1
+hn_all$occp_inter[hn_all$occp == 6] <- 1
+hn_all$occp_inter[hn_all$occp == 1] <- 1
+hn_all$occp_inter[hn_all$occp == 2] <- 1
+hn_all$occp_inter[hn_all$occp == 3] <- 3
+
+hn_all$occp_inter <- as.factor(hn_all$occp_inter)
+
+
+# 데이터 분할(남녀)
+
+hn_all_m <- hn_all[hn_all$sex == 1,]
+hn_all_f <- hn_all[hn_all$sex == 2,]
+
+
+# 성별마다 BMI 4분위수로 나눈 HE_BMI_4P 변수 새로 만들기.
+
+# 남자 BMI 3분위수, 4분위수
+
+round(quantile(hn_all_m$HE_BMI, c(0.335, 0.665)), 2) # 3등분
+round(quantile(hn_all_m$HE_BMI, c(0.25, 0.50, 0.75)), 2) # 4등분
+
+## 3등분(23.03, 25.56), 4등분(22.31, 24.27, 26.36) 기준으로 새로운 변수 만들기
+
+# 3등분
+
+hn_all_m$HE_BMI_3P = 1
+hn_all_m$HE_BMI_3P[hn_all_m$HE_BMI>=23.03]=2
+hn_all_m$HE_BMI_3P[hn_all_m$HE_BMI>=25.56]=3
+
+hn_all_m$HE_BMI_3P <- as.factor(hn_all_m$HE_BMI_3P)
+
+# 4등분
+
+hn_all_m$HE_BMI_4P = 1
+hn_all_m$HE_BMI_4P[hn_all_m$HE_BMI>=22.31]=2
+hn_all_m$HE_BMI_4P[hn_all_m$HE_BMI>=24.27]=3
+hn_all_m$HE_BMI_4P[hn_all_m$HE_BMI>=26.36]=4
+
+hn_all_m$HE_BMI_4P <- as.factor(hn_all_m$HE_BMI_4P)
+
+
+# 여자 BMI 3분위수, 4분위수
+
+round(quantile(hn_all_f$HE_BMI, c(0.335, 0.665)), 2)
+round(quantile(hn_all_f$HE_BMI, c(0.25, 0.50, 0.75)), 2) # 4등분
+
+## 3등분(21.7, 24.6), 4등분(20.95, 23.07, 25.62) 기준으로 새로운 변수 만들기
+
+# 3등분
+
+hn_all_f$HE_BMI_3P = 1
+hn_all_f$HE_BMI_3P[hn_all_f$HE_BMI>=21.7]=2
+hn_all_f$HE_BMI_3P[hn_all_f$HE_BMI>=24.6]=3
+
+hn_all_f$HE_BMI_3P <- as.factor(hn_all_f$HE_BMI_3P)
+
+# 4등분
+
+hn_all_f$HE_BMI_4P = 1
+hn_all_f$HE_BMI_4P[hn_all_f$HE_BMI>=20.95]=2
+hn_all_f$HE_BMI_4P[hn_all_f$HE_BMI>=23.07]=3
+hn_all_f$HE_BMI_4P[hn_all_f$HE_BMI>=25.62]=4
+
+hn_all_f$HE_BMI_4P <- as.factor(hn_all_f$HE_BMI_4P)
+
+
+
+
+
+
+# 성별마다 영양변수 3,4,5 분위수로 나눈 변수 새로 만들기.
+
+# 히스토그램 살펴보기(여자만)
+
+
+hist(hn_all_f$N_EN)
+hist(hn_all_f$N_SUGAR)
+
+
+"# 남자 영양변수 3분위수, 4분위수, 5분위수
+
+round(quantile(hn_all_m$N_EN, c(0.335, 0.665)), 2) # 3분위수
+round(quantile(hn_all_m$N_EN, c(0.25, 0.50, 0.75)), 2) # 4분위수
+round(quantile(hn_all_m$N_EN, c(0.2, 0.4, 0.6, 0.8)), 2) # 5분위수
+
+## 3등분(1824.06, 2557.07), 4등분(1653.06, 2165.99, 2800.62), 5등분(1544.14, 1954.64, 2390.76, 3003.06) 기준으로 새로운 변수 만들기
+
+# 3등분 (1824.06, 2557.07)
+
+hn_all_m$N_EN_3P = 1
+hn_all_m$N_EN_3P[hn_all_m$N_EN>=1824.06]=2
+hn_all_m$N_EN_3P[hn_all_m$N_EN>=2557.07]=3
+
+hn_all_m$N_EN_3P <- as.factor(hn_all_m$N_EN_3P)
+
+# 4등분 (1653.06, 2165.99, 2800.62)
+
+hn_all_m$N_EN_4P = 1
+hn_all_m$N_EN_4P[hn_all_m$N_EN>=1653.06]=2
+hn_all_m$N_EN_4P[hn_all_m$N_EN>=2165.99]=3
+hn_all_m$N_EN_4P[hn_all_m$N_EN>=2800.62]=4
+
+hn_all_m$N_EN_4P <- as.factor(hn_all_m$N_EN_4P)
+
+# 5등분 (1544.14, 1954.64, 2390.76, 3003.06)
+
+hn_all_m$N_EN_5P = 1
+hn_all_m$N_EN_5P[hn_all_m$N_EN>=1544.14]=2
+hn_all_m$N_EN_5P[hn_all_m$N_EN>=1954.64]=3
+hn_all_m$N_EN_5P[hn_all_m$N_EN>=2390.76]=4
+hn_all_m$N_EN_5P[hn_all_m$N_EN>=3003.06]=5
+
+hn_all_m$N_EN_5P <- as.factor(hn_all_m$N_EN_5P)"
+
+
+
+
+
+
+# 여자 영양변수(에너지) 3분위수, 4분위수, 5분위수
+
+round(quantile(hn_all_f$N_EN, c(0.335, 0.665)), 2) # 3분위수
+round(quantile(hn_all_f$N_EN, c(0.25, 0.50, 0.75)), 2) # 4분위수
+round(quantile(hn_all_f$N_EN, c(0.2, 0.4, 0.6, 0.8)), 2) # 5분위수
+
+## 3등분(1327.69, 1848.51), 4등분(1201.09, 1573.86, 2031.91), 5등분(1116.10, 1425.99, 1731.76, 2172.59) 기준으로 새로운 변수 만들기
+
+# 3등분 (1327.69, 1848.51)
+
+hn_all_f$N_EN_3P = 1
+hn_all_f$N_EN_3P[hn_all_f$N_EN>=1327.69]=2
+hn_all_f$N_EN_3P[hn_all_f$N_EN>=1848.51]=3
+
+hn_all_f$N_EN_3P <- as.factor(hn_all_f$N_EN_3P)
+
+# 4등분 (1201.09, 1573.86, 2031.91)
+
+hn_all_f$N_EN_4P = 1
+hn_all_f$N_EN_4P[hn_all_f$N_EN>=1201.09]=2
+hn_all_f$N_EN_4P[hn_all_f$N_EN>=1573.86]=3
+hn_all_f$N_EN_4P[hn_all_f$N_EN>=2031.91]=4
+
+hn_all_f$N_EN_4P <- as.factor(hn_all_f$N_EN_4P)
+
+# 5등분 (1116.10, 1425.99, 1731.76, 2172.59)
+
+hn_all_f$N_EN_5P = 1
+hn_all_f$N_EN_5P[hn_all_f$N_EN>=1116.10]=2
+hn_all_f$N_EN_5P[hn_all_f$N_EN>=1425.99]=3
+hn_all_f$N_EN_5P[hn_all_f$N_EN>=1731.76]=4
+hn_all_f$N_EN_5P[hn_all_f$N_EN>=2172.59]=5
+
+hn_all_f$N_EN_5P <- as.factor(hn_all_f$N_EN_5P)
+
+
+
+# 여자 영양변수(당) 3분위수, 4분위수, 5분위수
+
+round(quantile(hn_all_f$N_SUGAR, c(0.335, 0.665)), 2) # 3분위수
+round(quantile(hn_all_f$N_SUGAR, c(0.25, 0.50, 0.75)), 2) # 4분위수
+round(quantile(hn_all_f$N_SUGAR, c(0.2, 0.4, 0.6, 0.8)), 2) # 5분위수
+
+## 3등분 (36.13, 64.47), 4등분 (29.20, 49.51, 75.46), 5등분 (25.42, 41.05, 58.12, 83.78) 기준으로 새로운 변수 만들기
+
+# 3등분 (36.13, 64.47)
+
+hn_all_f$N_SUGAR_3P = 1
+hn_all_f$N_SUGAR_3P[hn_all_f$N_SUGAR>=36.13]=2
+hn_all_f$N_SUGAR_3P[hn_all_f$N_SUGAR>=64.47]=3
+
+hn_all_f$N_SUGAR_3P <- as.factor(hn_all_f$N_SUGAR_3P)
+
+# 4등분 (29.20, 49.51, 75.46)
+
+hn_all_f$N_SUGAR_4P = 1
+hn_all_f$N_SUGAR_4P[hn_all_f$N_SUGAR>=29.20]=2
+hn_all_f$N_SUGAR_4P[hn_all_f$N_SUGAR>=49.51]=3
+hn_all_f$N_SUGAR_4P[hn_all_f$N_SUGAR>=75.46]=4
+
+hn_all_f$N_SUGAR_4P <- as.factor(hn_all_f$N_SUGAR_4P)
+
+# 5등분 (25.42, 41.05, 58.12, 83.78)
+
+hn_all_f$N_SUGAR_5P = 1
+hn_all_f$N_SUGAR_5P[hn_all_f$N_SUGAR>=25.42]=2
+hn_all_f$N_SUGAR_5P[hn_all_f$N_SUGAR>=41.05]=3
+hn_all_f$N_SUGAR_5P[hn_all_f$N_SUGAR>=58.12]=4
+hn_all_f$N_SUGAR_5P[hn_all_f$N_SUGAR>=83.78]=5
+
+hn_all_f$N_SUGAR_5P <- as.factor(hn_all_f$N_SUGAR_5P)
+
+
+### 여자그룹 영양변수 생성 완료.
+
+
+
+
+## 후보변수 비교
+
+# 후보변수 없음
+
+### 여자그룹
+
+logit_model1 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    pa_aerobic+
+    #HE_BMI+
+    HE_BMI_4P+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    year
+  ,
+  data = hn_all_f, family = binomial())
+
+summary(logit_model1)
+
+vif(logit_model1)
+
+# 후보변수 1 : mh_stress
+
+logit_model2 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    pa_aerobic+
+    #HE_BMI+
+    HE_BMI_4P+
+    mh_stress+
+    #BP6_10+
+    #BP5+
+    #N_EN_3P+
+    #N_EN_4P+
+    #N_EN_5P+
+    #N_SUGAR_3P+
+    #N_SUGAR_4P+
+    #N_SUGAR_5P+
+    year
+  ,
+  data = hn_all_f, family = binomial())
+
+summary(logit_model2)
+
+
+# 후보변수 2 : BP6_10
+
+logit_model3 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    pa_aerobic+
+    #HE_BMI+
+    HE_BMI_4P+
+    #mh_stress+
+    BP6_10+
+    #BP5+
+    #N_EN_3P+
+    #N_EN_4P+
+    #N_EN_5P+
+    #N_SUGAR_3P+
+    #N_SUGAR_4P+
+    #N_SUGAR_5P+
+    year
+  ,
+  data = hn_all_f, family = binomial())
+
+summary(logit_model3)
+
+# 후보변수 3 : BP5
+
+logit_model4 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    pa_aerobic+
+    #HE_BMI+
+    HE_BMI_4P+
+    #mh_stress+
+    #BP6_10+
+    BP5+
+    #N_EN_3P+
+    #N_EN_4P+
+    #N_EN_5P+
+    #N_SUGAR_3P+
+    #N_SUGAR_4P+
+    #N_SUGAR_5P+
+    year
+  ,
+  data = hn_all_f, family = binomial())
+
+summary(logit_model4)
+
+# 후보변수 4 : N_EN_3P
+
+logit_model5 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    pa_aerobic+
+    #HE_BMI+
+    HE_BMI_4P+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    N_EN_3P+
+    #N_EN_4P+
+    #N_EN_5P+
+    #N_SUGAR_3P+
+    #N_SUGAR_4P+
+    #N_SUGAR_5P+
+    year
+  ,
+  data = hn_all_f, family = binomial())
+
+summary(logit_model5)
+
+
+# 후보변수 5 : N_EN_4P
+
+logit_model6 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    pa_aerobic+
+    #HE_BMI+
+    HE_BMI_4P+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #N_EN_3P+
+    N_EN_4P+
+    #N_EN_5P+
+    #N_SUGAR_3P+
+    #N_SUGAR_4P+
+    #N_SUGAR_5P+
+    year
+  ,
+  data = hn_all_f, family = binomial())
+
+summary(logit_model6)
+
+
+# 후보변수 6 : N_EN_5P
+
+logit_model7 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    pa_aerobic+
+    #HE_BMI+
+    HE_BMI_4P+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #N_EN_3P+
+    #N_EN_4P+
+    N_EN_5P+
+    #N_SUGAR_3P+
+    #N_SUGAR_4P+
+    #N_SUGAR_5P+
+    year
+  ,
+  data = hn_all_f, family = binomial())
+
+summary(logit_model7)
+
+
+
+# 후보변수 7 : N_SUGAR_3P
+
+logit_model8 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    pa_aerobic+
+    #HE_BMI+
+    HE_BMI_4P+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #N_EN_3P+
+    #N_EN_4P+
+    #N_EN_5P+
+    N_SUGAR_3P+
+    #N_SUGAR_4P+
+    #N_SUGAR_5P+
+    year
+  ,
+  data = hn_all_f, family = binomial())
+
+summary(logit_model8)
+
+# 후보변수 8 : N_SUGAR_4P
+
+logit_model9 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    pa_aerobic+
+    #HE_BMI+
+    HE_BMI_4P+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #N_EN_3P+
+    #N_EN_4P+
+    #N_EN_5P+
+    #N_SUGAR_3P+
+    N_SUGAR_4P+
+    #N_SUGAR_5P+
+    year
+  ,
+  data = hn_all_f, family = binomial())
+
+summary(logit_model9)
+
+
+# 후보변수 9 : N_SUGAR_5P
+
+logit_model10 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    pa_aerobic+
+    #HE_BMI+
+    HE_BMI_4P+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #N_EN_3P+
+    #N_EN_4P+
+    #N_EN_5P+
+    #N_SUGAR_3P+
+    #N_SUGAR_4P+
+    N_SUGAR_5P+
+    year
+  ,
+  data = hn_all_f, family = binomial())
+
+summary(logit_model10)
+
+
+
+
+# 최종정리
+
+
+summary(logit_model9) # 직업3 P-value 0.052
+summary(logit_model10)# 직업3 P-value 0.048
+
+
+
+
+
+
+
+
+```
+
