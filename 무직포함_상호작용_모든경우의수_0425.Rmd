@@ -1,0 +1,1350 @@
+---
+title: "무직포함_상호작용_모든경우의수_0425"
+author: "김우리"
+date: '2021.04.14'
+output: html_document
+---
+
+```{r 무직포함_상호작용_모든경우의수_0425, message=FALSE, warning=FALSE}
+
+#### 남녀 데이터 분할후 각각 로지스틱 ####
+
+library(haven)
+library(dplyr)
+library(ggplot2)
+library(gmodels)
+library(agricolae)
+library(survey)
+library(car)
+library(sqldf)
+library(ROCR)
+library(DT)
+library(knitr)
+library(moonBook)
+library(jtools)
+library(ggplot2)
+library(interactions)
+library(sandwich)
+library(ResourceSelection)
+library(stargazer)
+library(effects)
+
+# install.packages("sandwich")
+# install.packages("interactions")
+# install.packages("jtools")
+# install.packages("moonBook")
+# install.packages("knitr")
+# install.packages("DT")
+# install.packages("ROCR")
+# install.packages("car")
+# install.packages("ResourceSelection")
+
+hn_all <- read.csv("C:/rproject/startr/hn_all.csv")
+
+hn_all <- subset(hn_all, select = -c(X))
+
+# 경우의 수 보기 위한 추가 전처리
+
+# 연령
+
+hn_all$age_cate[hn_all$age>=19 & hn_all$age<=39]=1
+hn_all$age_cate[hn_all$age>=40 & hn_all$age<=49]=2
+hn_all$age_cate[hn_all$age>=50 & hn_all$age<=59]=3
+hn_all$age_cate[hn_all$age>=60 & hn_all$age<=69]=4
+hn_all$age_cate[hn_all$age>=70]=5
+
+# BMI 저체중 / 정상 / 비만으로 나누기.
+
+hn_all$HE_BMI_cate = 1
+hn_all$HE_BMI_cate[hn_all$HE_BMI>=18.5]=2
+hn_all$HE_BMI_cate[hn_all$HE_BMI>=25]=3
+
+# edu 초중/고/대 3개로 나누기
+
+hn_all$edu3G[hn_all$edu == 1] <- 1
+hn_all$edu3G[hn_all$edu == 2] <- 1
+hn_all$edu3G[hn_all$edu == 3] <- 2
+hn_all$edu3G[hn_all$edu == 4] <- 3
+
+### 범주형 factor 처리
+
+hn_all$year <- as.factor(hn_all$year)
+
+hn_all$occp <- as.factor(hn_all$occp)
+
+hn_all$edu <- as.factor(hn_all$edu)
+
+hn_all$edu3G <- as.factor(hn_all$edu3G)
+
+hn_all$BS3_1 <- as.factor(hn_all$BS3_1)
+
+hn_all$EC_wht_5 <- as.factor(hn_all$EC_wht_5)
+
+hn_all$marri_1 <- as.factor(hn_all$marri_1)
+
+hn_all$sm_presnt <- as.factor(hn_all$sm_presnt)
+
+hn_all$dr_month <- as.factor(hn_all$dr_month)
+
+hn_all$pa_walk <- as.factor(hn_all$pa_walk)
+
+hn_all$pa_aerobic <- as.factor(hn_all$pa_aerobic)
+
+hn_all$HE_BMI_band <- as.factor(hn_all$HE_BMI_band)
+
+hn_all$HE_BMI_cate <- as.factor(hn_all$HE_BMI_cate)
+
+# hn_all$age_cate <- as.factor(hn_all$age_cate)
+
+# hn_all$age_band <- as.factor(hn_all$age_band)
+
+hn_all$ainc_band <- as.factor(hn_all$ainc_band)
+
+hn_all$incm <- as.factor(hn_all$incm)
+
+hn_all$mh_stress <- as.factor(hn_all$mh_stress)
+
+hn_all$BP6_10 <- as.factor(hn_all$BP6_10)
+
+hn_all$BP5 <- as.factor(hn_all$BP5)
+
+
+
+
+########### 직업군 3개로 묶기 ############
+
+# Manual workers were elementary workers, craft and related trades workers, equipment, machine operation and assembling workers, and agricultural, forestry and fishery workers.
+
+#  Non-manual workers consisted of clerks, professionals and related workers, managers.
+
+# The rest are Service/sales workers.
+
+# 1. 관리자, 전문가 및 관련 종사자
+# 2. 사무종사자
+# 3. 서비스 및 판매 종사자
+# 4. 농림어업 숙련 종사자
+# 5. 기능원, 장치․기계조작 및 조립종사자
+# 6. 단순노무종사자
+# 7. 무직(주부, 학생 등)
+
+# Manual workers(4,5,6) = 1 / Non-manual workers(1,2) = 2 / Service/sales workers(3) = 3 / not employed(7) = 4
+# 직업그룹 4개
+
+hn_all$occp4G[hn_all$occp == 4] <- 1
+hn_all$occp4G[hn_all$occp == 5] <- 1
+hn_all$occp4G[hn_all$occp == 6] <- 1
+hn_all$occp4G[hn_all$occp == 1] <- 2
+hn_all$occp4G[hn_all$occp == 2] <- 2
+hn_all$occp4G[hn_all$occp == 3] <- 3
+hn_all$occp4G[hn_all$occp == 7] <- 4
+
+hn_all$occp4G <- as.factor(hn_all$occp4G)
+
+
+#  농촌블루칼라(4) = 1 / white(1,2) = 2 / 도시블루칼라(5,6) = 3 / Service/sales workers(3) = 4 / not employed(7) = 5
+# 직업그룹 5개
+
+hn_all$occp5G[hn_all$occp == 4] <- 1
+hn_all$occp5G[hn_all$occp == 5] <- 3
+hn_all$occp5G[hn_all$occp == 6] <- 3
+hn_all$occp5G[hn_all$occp == 1] <- 2
+hn_all$occp5G[hn_all$occp == 2] <- 2
+hn_all$occp5G[hn_all$occp == 3] <- 4
+hn_all$occp5G[hn_all$occp == 7] <- 5
+
+hn_all$occp5G <- as.factor(hn_all$occp5G)
+
+
+
+# 데이터 분할(남녀)
+
+hn_all_m <- hn_all[hn_all$sex == 1,]
+hn_all_f <- hn_all[hn_all$sex == 2,]
+
+
+# 성별마다 BMI 4분위수로 나눈 HE_BMI_4P 변수 새로 만들기.
+
+# 남자 BMI 3분위수, 4분위수
+
+round(quantile(hn_all_m$HE_BMI, c(0.335, 0.665)), 2) # 3등분
+round(quantile(hn_all_m$HE_BMI, c(0.25, 0.50, 0.75)), 2) # 4등분
+
+## 3등분(23.03, 25.56), 4등분(22.31, 24.27, 26.36) 기준으로 새로운 변수 만들기
+
+# 3등분
+
+hn_all_m$HE_BMI_3P = 1
+hn_all_m$HE_BMI_3P[hn_all_m$HE_BMI>=23.03]=2
+hn_all_m$HE_BMI_3P[hn_all_m$HE_BMI>=25.56]=3
+
+hn_all_m$HE_BMI_3P <- as.factor(hn_all_m$HE_BMI_3P)
+
+# 4등분
+
+hn_all_m$HE_BMI_4P = 1
+hn_all_m$HE_BMI_4P[hn_all_m$HE_BMI>=22.31]=2
+hn_all_m$HE_BMI_4P[hn_all_m$HE_BMI>=24.27]=3
+hn_all_m$HE_BMI_4P[hn_all_m$HE_BMI>=26.36]=4
+
+hn_all_m$HE_BMI_4P <- as.factor(hn_all_m$HE_BMI_4P)
+
+
+# 여자 BMI 3분위수, 4분위수
+
+round(quantile(hn_all_f$HE_BMI, c(0.335, 0.665)), 2)
+round(quantile(hn_all_f$HE_BMI, c(0.25, 0.50, 0.75)), 2) # 4등분
+
+## 3등분(21.7, 24.6), 4등분(20.95, 23.07, 25.62) 기준으로 새로운 변수 만들기
+
+# 3등분
+
+hn_all_f$HE_BMI_3P = 1
+hn_all_f$HE_BMI_3P[hn_all_f$HE_BMI>=21.7]=2
+hn_all_f$HE_BMI_3P[hn_all_f$HE_BMI>=24.6]=3
+
+hn_all_f$HE_BMI_3P <- as.factor(hn_all_f$HE_BMI_3P)
+
+# 4등분
+
+hn_all_f$HE_BMI_4P = 1
+hn_all_f$HE_BMI_4P[hn_all_f$HE_BMI>=20.95]=2
+hn_all_f$HE_BMI_4P[hn_all_f$HE_BMI>=23.07]=3
+hn_all_f$HE_BMI_4P[hn_all_f$HE_BMI>=25.62]=4
+
+hn_all_f$HE_BMI_4P <- as.factor(hn_all_f$HE_BMI_4P)
+
+
+# 4등분 (30, 50, 80)
+
+hn_all_f$N_SUGAR_4F = 1
+hn_all_f$N_SUGAR_4F[hn_all_f$N_SUGAR>=30]=2
+hn_all_f$N_SUGAR_4F[hn_all_f$N_SUGAR>=50]=3
+hn_all_f$N_SUGAR_4F[hn_all_f$N_SUGAR>=80]=4
+
+hn_all_f$N_SUGAR_4F <- as.factor(hn_all_f$N_SUGAR_4F)
+
+
+### 여자그룹
+
+logit_model6 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_model6)
+
+
+
+
+
+# 본 회귀모형
+
+logit_1 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    #pa_walk+
+    pa_aerobic+
+    HE_BMI_4P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    year,
+  data = hn_all_f, family = binomial())
+
+
+
+# case 1 : occp4G*edu3G
+
+
+logit_2 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    occp4G*edu3G+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_2)
+
+# 결과 : 상호작용항에서 유의미한 변수 x
+
+
+# case 2 : occp4G*ainc_band
+
+
+logit_3 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    occp4G*ainc_band+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_3)
+
+# 결과 : occp4G4:ainc_band2  0.50445    0.23881   2.112  0.03465 *
+
+# case 2 : 모형요약표
+
+stargazer(logit_1, logit_3, type = "text",
+          column.labels = c("Main Effects", "Interaction"), 
+          intercept.bottom = FALSE, 
+          single.row=FALSE,     
+          notes.append = FALSE, 
+          header=FALSE)
+
+# case 2 : 상호작용 그래프
+
+cat_plot(logit_3, pred="ainc_band", modx="occp4G", geom = "line", vary.lty = TRUE, point.shape = TRUE, interval = FALSE)
+
+
+
+# case 3 : occp4G*age_cate
+
+
+logit_4 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    occp4G*age_cate+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_4)
+
+# 결과 : occp4G2:age_cate  0.33665    0.15315   2.198  0.02793 *
+
+# case 3 : 모형요약표
+
+stargazer(logit_1, logit_4, type = "text",
+          column.labels = c("Main Effects", "Interaction"), 
+          intercept.bottom = FALSE, 
+          single.row=FALSE,     
+          notes.append = FALSE, 
+          header=FALSE)
+
+# case 3 : 상호작용 그래프
+
+interact_plot(logit_4, pred="age_cate", modx="occp4G", vary.lty = TRUE, point.shape = TRUE)
+
+
+
+# case 4 : occp4G*sm_presnt
+
+
+logit_5 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    occp4G*sm_presnt+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_5)
+
+# 결과 : 상호작용항에서 유의미한 변수 x
+
+
+# case 5 : occp4G*dr_month
+
+
+logit_6 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    occp4G*dr_month+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_6)
+
+# 결과 : 상호작용항에서 유의미한 변수 x
+
+
+# case 6 : occp4G*pa_walk
+
+
+logit_7 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    occp4G*pa_walk+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_7)
+
+# 결과 : 상호작용항에서 유의미한 변수 x
+
+
+# case 7 : occp4G*HE_BMI_3P
+
+
+logit_8 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    occp4G*HE_BMI_3P+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_8)
+
+# 결과 : occp4G2:HE_BMI_3P3  1.42291    0.52033   2.735 0.006245 **
+
+
+# case 7 : 모형요약표
+
+stargazer(logit_1, logit_8, type = "text",
+          column.labels = c("Main Effects", "Interaction"), 
+          intercept.bottom = FALSE, 
+          single.row=FALSE,     
+          notes.append = FALSE, 
+          header=FALSE)
+
+# case 7 : 상호작용 그래프
+
+cat_plot(logit_8, pred="HE_BMI_3P", modx="occp4G", geom = "line", vary.lty = TRUE, point.shape = TRUE, interval = FALSE)
+
+
+# case 8 : edu3G*ainc_band
+
+
+logit_9 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    edu3G*ainc_band+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_9)
+
+# 결과 : 상호작용항에서 유의미한 변수 x
+
+
+
+# case 9 : edu3G*age_cate
+
+
+logit_10 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    edu3G*age_cate+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_10)
+
+# 결과 : edu3G2:age_cate  0.21127    0.08335   2.535 0.011252 *  
+#        edu3G3:age_cate  0.42856    0.10654   4.023 5.75e-05 **
+
+# case 9 : 모형요약표
+
+stargazer(logit_1, logit_10, type = "text",
+          column.labels = c("Main Effects", "Interaction"), 
+          intercept.bottom = FALSE, 
+          single.row=FALSE,     
+          notes.append = FALSE, 
+          header=FALSE)
+
+# case 9 : 상호작용 그래프
+
+interact_plot(logit_10, pred="age_cate", modx="edu3G", vary.lty = TRUE, point.shape = TRUE)
+
+
+# case 10 : edu3G*sm_presnt
+
+
+logit_11 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    edu3G*sm_presnt+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_11)
+
+# 결과 : 상호작용항에서 유의미한 변수 x  
+
+
+# case 11 : edu3G*dr_month
+
+
+logit_12 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    edu3G*dr_month+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_12)
+
+# 결과 : 상호작용항에서 유의미한 변수 x
+
+
+# case 12 : edu3G*pa_walk
+
+
+logit_13 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    edu3G*pa_walk+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_13)
+
+# 결과 : edu3G3:pa_walk1  2.317622   1.023681   2.264  0.02357 *
+
+
+# case 12 : 모형요약표
+
+stargazer(logit_1, logit_13, type = "text",
+          column.labels = c("Main Effects", "Interaction"), 
+          intercept.bottom = FALSE, 
+          single.row=FALSE,     
+          notes.append = FALSE, 
+          header=FALSE)
+
+# case 12 : 상호작용 그래프
+
+cat_plot(logit_13, pred="edu3G", modx="pa_walk", geom = "line", vary.lty = TRUE, point.shape = TRUE, interval = FALSE)
+
+cat_plot(logit_13, pred="pa_walk", modx="edu3G", geom = "line", vary.lty = TRUE, point.shape = TRUE, interval = FALSE)
+
+
+# case 13 : edu3G*HE_BMI_3P
+
+
+logit_14 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    edu3G*HE_BMI_3P+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_14)
+
+# 결과 : edu3G3:HE_BMI_3P2  0.677065   0.369851   1.831 0.067154 .  
+#        edu3G2:HE_BMI_3P3  0.625034   0.253088   2.470 0.013525 *  
+#        edu3G3:HE_BMI_3P3  1.014715   0.350410   2.896 0.003782 **
+
+# case 13 : 모형요약표
+
+stargazer(logit_1, logit_14, type = "text",
+          column.labels = c("Main Effects", "Interaction"), 
+          intercept.bottom = FALSE, 
+          single.row=FALSE,     
+          notes.append = FALSE, 
+          header=FALSE)
+
+# case 13 : 상호작용 그래프
+
+cat_plot(logit_14, pred="edu3G", modx="HE_BMI_3P", geom = "line", vary.lty = TRUE, point.shape = TRUE, interval = FALSE)
+
+cat_plot(logit_14, pred="HE_BMI_3P", modx="edu3G", geom = "line", vary.lty = TRUE, point.shape = TRUE, interval = FALSE)
+
+
+
+# case 14 : ainc_band*age_cate
+
+
+logit_15 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    ainc_band*age_cate+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_15)
+
+# 결과 : ainc_band2:age_cate  0.14678    0.07354   1.996  0.04593 *  
+#        ainc_band3:age_cate  0.24648    0.08700   2.833  0.00461 ** 
+
+# case 14 : 모형요약표
+
+stargazer(logit_1, logit_15, type = "text",
+          column.labels = c("Main Effects", "Interaction"), 
+          intercept.bottom = FALSE, 
+          single.row=FALSE,     
+          notes.append = FALSE, 
+          header=FALSE)
+
+# case 14 : 상호작용 그래프
+
+interact_plot(logit_15, pred="age_cate", modx="ainc_band", vary.lty = TRUE, point.shape = TRUE)
+
+
+
+# case 15 : ainc_band*sm_presnt
+
+
+logit_16 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    ainc_band*sm_presnt+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_16)
+
+# 결과 : 상호작용항에서 유의미한 변수 x
+
+
+# case 16 : ainc_band*dr_month
+
+
+logit_17 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    ainc_band*dr_month+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_17)
+
+# 결과 : 상호작용항에서 유의미한 변수 x
+
+
+# case 17 : ainc_band*pa_walk
+
+
+logit_18 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    ainc_band*pa_walk+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_18)
+
+# 결과 : 상호작용항에서 유의미한 변수 x
+
+
+
+# case 18 : ainc_band*HE_BMI_3P
+
+
+logit_19 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    ainc_band*HE_BMI_3P+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_19)
+
+# 결과 : ainc_band3:HE_BMI_3P3  0.581951   0.301105   1.933  0.05327 .
+
+
+# case 18 : 모형요약표
+
+stargazer(logit_1, logit_19, type = "text",
+          column.labels = c("Main Effects", "Interaction"), 
+          intercept.bottom = FALSE, 
+          single.row=FALSE,     
+          notes.append = FALSE, 
+          header=FALSE)
+
+# case 18 : 상호작용 그래프
+
+cat_plot(logit_19, pred="ainc_band", modx="HE_BMI_3P", geom = "line", vary.lty = TRUE, point.shape = TRUE, interval = FALSE)
+
+cat_plot(logit_19, pred="HE_BMI_3P", modx="ainc_band", geom = "line", vary.lty = TRUE, point.shape = TRUE, interval = FALSE)
+
+
+
+# case 19 : age_cate*sm_presnt
+
+
+logit_20 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    age_cate*sm_presnt+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_20)
+
+# 결과 : age_cate:sm_presnt1  0.174194   0.099154   1.757  0.07895 .  
+
+# case 19 : 모형요약표
+
+stargazer(logit_1, logit_20, type = "text",
+          column.labels = c("Main Effects", "Interaction"), 
+          intercept.bottom = FALSE, 
+          single.row=FALSE,     
+          notes.append = FALSE, 
+          header=FALSE)
+
+# case 19 : 상호작용 그래프
+
+interact_plot(logit_20, pred="age_cate", modx="sm_presnt", vary.lty = TRUE, point.shape = TRUE)
+
+
+
+# case 20 : age_cate*dr_month
+
+
+logit_21 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    age_cate*dr_month+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_21)
+
+# 결과 : 상호작용항에서 유의미한 변수 x  
+
+
+# case 21 : age_cate*pa_walk
+
+
+logit_22 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    age_cate*pa_walk+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_22)
+
+# 결과 : 상호작용항에서 유의미한 변수 x 
+
+
+# case 22 : age_cate*HE_BMI_3P
+
+
+logit_23 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    age_cate*HE_BMI_3P+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_23)
+
+# 결과 : age_cate:HE_BMI_3P2 -0.116588   0.097812  -1.192  0.23327    
+#        age_cate:HE_BMI_3P3 -0.430105   0.086590  -4.967 6.79e-07 ***
+
+# case 22 : 모형요약표
+
+stargazer(logit_1, logit_23, type = "text",
+          column.labels = c("Main Effects", "Interaction"), 
+          intercept.bottom = FALSE, 
+          single.row=FALSE,     
+          notes.append = FALSE, 
+          header=FALSE)
+
+# case 22 : 상호작용 그래프
+
+interact_plot(logit_23, pred="age_cate", modx="HE_BMI_3P", vary.lty = TRUE, point.shape = TRUE)
+
+
+
+# case 23 : sm_presnt*dr_month
+
+
+logit_24 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    sm_presnt*dr_month+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_24)
+
+# 결과 : 상호작용항에서 유의미한 변수 x 
+
+
+# case 24 : sm_presnt*pa_walk
+
+
+logit_25 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    sm_presnt*pa_walk+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_25)
+
+# 결과 : 상호작용항에서 유의미한 변수 x 
+
+
+# case 25 : sm_presnt*HE_BMI_3P
+
+
+logit_26 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    sm_presnt*HE_BMI_3P+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_26)
+
+# 결과 : sm_presnt1:HE_BMI_3P3  0.78323    0.41518   1.886  0.05923 .  
+
+
+# case 25 : 모형요약표
+
+stargazer(logit_1, logit_26, type = "text",
+          column.labels = c("Main Effects", "Interaction"), 
+          intercept.bottom = FALSE, 
+          single.row=FALSE,     
+          notes.append = FALSE, 
+          header=FALSE)
+
+# case 25 : 상호작용 그래프
+
+cat_plot(logit_26, pred="sm_presnt", modx="HE_BMI_3P", geom = "line", vary.lty = TRUE, point.shape = TRUE, interval = FALSE)
+
+cat_plot(logit_26, pred="HE_BMI_3P", modx="sm_presnt", geom = "line", vary.lty = TRUE, point.shape = TRUE, interval = FALSE)
+
+
+
+
+# case 26 : dr_month*pa_walk
+
+
+logit_27 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    dr_month*pa_walk+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_27)
+
+# 결과 : 상호작용항에서 유의미한 변수 x 
+
+
+# case 27 : dr_month*HE_BMI_3P
+
+
+logit_28 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    dr_month*HE_BMI_3P+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_28)
+
+# 결과 : dr_month1:HE_BMI_3P3  0.708111   0.232585   3.045 0.002330 **
+
+
+# case 27 : 모형요약표
+
+stargazer(logit_1, logit_28, type = "text",
+          column.labels = c("Main Effects", "Interaction"), 
+          intercept.bottom = FALSE, 
+          single.row=FALSE,     
+          notes.append = FALSE, 
+          header=FALSE)
+
+# case 27 : 상호작용 그래프
+
+cat_plot(logit_28, pred="dr_month", modx="HE_BMI_3P", geom = "line", vary.lty = TRUE, point.shape = TRUE, interval = FALSE)
+
+cat_plot(logit_28, pred="HE_BMI_3P", modx="dr_month", geom = "line", vary.lty = TRUE, point.shape = TRUE, interval = FALSE)
+
+
+
+# case 28 : pa_walk*HE_BMI_3P
+
+
+logit_29 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_3P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    pa_walk*HE_BMI_3P+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_29)
+
+# 결과 : 상호작용항에서 유의미한 변수 x 
+
+
+
+# case 29 : N_SUGAR_4F*occp4G
+
+
+logit_30 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    #pa_walk+
+    pa_aerobic+
+    HE_BMI_4P+
+    #BP1+
+    #mh_stress+
+    #BP6_10+
+    #BP5+
+    #LQ_5EQL+
+    N_SUGAR_4F+
+    N_SUGAR_4F*occp4G+
+    year,
+  data = hn_all_f, family = binomial())
+
+summary(logit_30)
+
+# 결과 : occp4G2:N_SUGAR_4F3  0.845101   0.498508   1.695 0.090026 . 
+
+#       occp4G4:N_SUGAR_4F4  0.728481   0.348560   2.090 0.036620 *   
+
+
+# case 29 : 상호작용 그래프
+
+cat_plot(logit_30, pred="N_SUGAR_4F", modx="occp4G", geom = "line", vary.lty = TRUE, point.shape = TRUE, interval = FALSE)
+
+cat_plot(logit_30, pred="occp4G", modx="N_SUGAR_4F", geom = "line", vary.lty = TRUE, point.shape = TRUE, interval = FALSE)
+
+```
+
