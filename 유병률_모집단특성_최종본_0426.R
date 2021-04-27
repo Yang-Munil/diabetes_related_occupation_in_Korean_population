@@ -17,6 +17,7 @@ library(sandwich)
 library(ResourceSelection)
 library(stargazer)
 library(effects)
+library(chest)
 
 # 데이터 불러오기
 
@@ -57,13 +58,14 @@ hn_all$edu3G[hn_all$edu == 2] <- 1
 hn_all$edu3G[hn_all$edu == 3] <- 2
 hn_all$edu3G[hn_all$edu == 4] <- 3
 
-"### 범주형 factor 처리
+
+### 범주형 factor 처리
 
 hn_all$year <- as.factor(hn_all$year)
 
-hn_all$occp <- as.factor(hn_all$occp)
+hn_all$occp4G <- as.factor(hn_all$occp4G)
 
-hn_all$edu <- as.factor(hn_all$edu)
+hn_all$edu3G <- as.factor(hn_all$edu3G)
 
 hn_all$edu3G <- as.factor(hn_all$edu3G)
 
@@ -91,7 +93,7 @@ hn_all$HE_BMI_cate <- as.factor(hn_all$HE_BMI_cate)
 
 hn_all$ainc_band <- as.factor(hn_all$ainc_band)
 
-hn_all$incm <- as.factor(hn_all$incm)"
+hn_all$incm <- as.factor(hn_all$incm)
 
 ########### 직업군 3개로 묶기 ############
 
@@ -135,6 +137,9 @@ hn_all$occp5G[hn_all$occp == 3] <- 4
 hn_all$occp5G[hn_all$occp == 7] <- 5
 
 hn_all$occp5G <- as.factor(hn_all$occp5G)
+
+
+
 
 
 # 데이터 분할(남녀)
@@ -774,6 +779,11 @@ oneway.test(ainc~occp,hn_all) # p-value < 2.2e-16
 
 ################ 직업그룹별 범주형 변수 Chisq-test 시작 ################
 
+# BMI (저체중 정상 과체중)
+
+chisq.test(hn_all$HE_BMI_cate, hn_all$occp4G)
+CrossTable(hn_all$HE_BMI_cate, hn_all$occp4G, chisq = T)
+
 # sex
 
 chisq.test(hn_all$sex, hn_all$occp4G)
@@ -921,10 +931,11 @@ df_sex_FAT
 
 ################ 범주형 변수 Chisq-test 시작 ################
 
-# HE_BMI_band
+# HE_BMI_
 
-chisq.test(hn_all$HE_BMI_band, hn_all$sex)
-CrossTable(hn_all$HE_BMI_band, hn_all$sex, chisq = T)
+chisq.test(hn_all$HE_BMI_cate, hn_all$sex)
+CrossTable(hn_all$HE_BMI_cate, hn_all$sex, chisq = T)
+
 
 # edu3G
 
@@ -989,9 +1000,173 @@ CrossTable(hn_all$mh_stress, hn_all$sex, chisq = T)
 ###################### 모집단 특성을 보기 위한 성별 그룹별 ANOVA, Chisq-Test 종료 ######################
 
 
+
+
+
+
+
+
+
+
+
+
 ########################################################################################################
 
 #### Table 4 - 남녀 직업별 오즈비와 신뢰구간
+
+### 남자그룹
+
+hn_all_m$occp4G <- as.factor(hn_all_m$occp4G)
+
+logit_model1 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    #pa_walk+
+    pa_aerobic+
+    HE_BMI_4P+
+    N_SUGAR_4F+
+    N_EN_4F+
+    N_FAT_4F,
+  data = hn_all_m, family = binomial())
+
+summary(logit_model1)
+
+
+# 오즈비와 신뢰구간
+
+extractOR(logit_model1)
+
+
+
+
+
+
+### 여자그룹
+
+hn_all_f$occp4G <- as.factor(hn_all_f$occp4G)
+
+logit_model2 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    #pa_walk+
+    pa_aerobic+
+    HE_BMI_4P+
+    N_SUGAR_4F+
+    N_EN_4F+
+    N_FAT_4F,
+  data = hn_all_f, family = binomial())
+
+summary(logit_model2)
+
+
+
+# 오즈비와 신뢰구간
+
+extractOR(logit_model2)
+
+
+
+
+
+######## Table 5 - confounding 보는 R 패키지를 이용하여 crude = "HE_DM ~ occp4G" 로 두고, vlist 에 나머지 변수 넣어서 표 형태로된 그래프 출력 함수를 써서 오즈비의 변화값 출력하기.
+
+# install.packages("chest")
+
+# 남자
+
+results_m <- chest_speedglm(
+  crude = "HE_DM ~ occp4G",
+  xlist = c("ainc_band", "age_cate", "sm_presnt", "dr_month", "pa_aerobic","HE_BMI", "N_SUGAR", "N_EN", "N_FAT", "edu3G"),
+  data = hn_all_m)
+
+chest_forest(results_m)
+
+# 여자
+
+results_f <- chest_speedglm(
+  crude = "HE_DM ~ occp4G",
+  xlist = c("ainc_band", "age_cate", "sm_presnt", "dr_month", "pa_aerobic","HE_BMI", "N_SUGAR", "N_EN", "N_FAT", "edu3G"),
+  data = hn_all_f)
+
+chest_forest(results_f) 
+
+
+
+
+## Table 6,7 - 여자그룹 당 안 넣은 로지스틱 결과(변수10개), 당 넣은 로지스틱 결과(변수11개) 비교표
+
+
+# 당 안 넣은거(변수10개)
+
+logit_model3 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    #pa_walk+
+    pa_aerobic+
+    HE_BMI_4P+
+    #N_SUGAR_4F+
+    N_EN_4F+
+    N_FAT_4F,
+  data = hn_all_f, family = binomial())
+
+summary(logit_model3)
+
+# 당 넣은거(변수11개)
+
+logit_model4 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu3G+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    #pa_walk+
+    pa_aerobic+
+    HE_BMI_4P+
+    N_SUGAR_4F+
+    N_EN_4F+
+    N_FAT_4F,
+  data = hn_all_f, family = binomial())
+
+summary(logit_model4)
+
+# 10개, 11개 비교표
+
+stargazer(logit_model3, logit_model4, type = "text",
+          column.labels = c("당 미포함 10개", "당 포함 11개"), 
+          intercept.bottom = FALSE, 
+          single.row=FALSE,     
+          notes.append = FALSE, 
+          header=FALSE)
+
+
+
+
+
 
 
 
