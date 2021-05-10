@@ -8,7 +8,9 @@ library(dplyr)
 
 ### 당뇨비율을 보기 위한 데이터 불러오기
 
+
 # 데이터 불러오기
+
 hn18_all <- read_sas("C:/rproject/startr/hn18_all.sas7bdat", NULL)
 hn17_all <- read_sas("C:/rproject/startr/hn17_all.sas7bdat", NULL)
 hn16_all <- read_sas("C:/rproject/startr/hn16_all.sas7bdat", NULL)
@@ -96,17 +98,16 @@ hn_all_aero <- subset(hn_all_aero, select = -c(X))
 hn_all <- cbind(hn_all, hn_all_der, hn_all_aero)
 hn_all
 
-
 #######################변수별 당뇨 구성비를 보기 위한 전처리 데이터 생성 완료#########################
 
 
 # 종속변수(HE_DM) 비율.
 
-table(hn_all_final$HE_DM)
+table(hn_all$HE_DM)
 
-cat("total :", margin.table(table(hn_all_final$HE_DM)))
+cat("total :", margin.table(table(hn_all$HE_DM)))
 
-prop.table(table(hn_all_final$HE_DM))
+prop.table(table(hn_all$HE_DM))
 
 
 
