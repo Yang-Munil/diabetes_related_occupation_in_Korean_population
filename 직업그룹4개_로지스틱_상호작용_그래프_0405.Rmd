@@ -1,0 +1,435 @@
+---
+title: "직업그룹4개_로지스틱_상호작용_그래프"
+author: "김우리"
+date: '2021.04.05 '
+output: html_document
+---
+
+```{r 직업그룹4개_로지스틱_상호작용_그래프, message=FALSE, warning=FALSE}
+
+#### 남녀 데이터 분할후 각각 로지스틱 ####
+
+library(haven)
+library(dplyr)
+library(ggplot2)
+library(gmodels)
+library(agricolae)
+library(survey)
+library(car)
+library(sqldf)
+library(ROCR)
+library(DT)
+library(knitr)
+library(moonBook)
+library(jtools)
+library(ggplot2)
+library(interactions)
+library(sandwich)
+
+# install.packages("sandwich")
+# install.packages("interactions")
+# install.packages("jtools")
+# install.packages("moonBook")
+# install.packages("knitr")
+# install.packages("DT")
+# install.packages("ROCR")
+# install.packages("car")
+
+# 데이터 불러오기
+
+hn_all <- read.csv("C:/rproject/startr/hn_all.csv")
+
+hn_all <- subset(hn_all, select = -c(X))
+
+# 경우의 수 보기 위한 추가 전처리
+
+# 연령
+
+hn_all$age_cate[hn_all$age>=19 & hn_all$age<=39]=1
+hn_all$age_cate[hn_all$age>=40 & hn_all$age<=49]=2
+hn_all$age_cate[hn_all$age>=50 & hn_all$age<=59]=3
+hn_all$age_cate[hn_all$age>=60 & hn_all$age<=69]=4
+hn_all$age_cate[hn_all$age>=70]=5
+
+# BMI 저체중 / 정상 / 비만으로 나누기.
+
+hn_all$HE_BMI_cate = 1
+hn_all$HE_BMI_cate[hn_all$HE_BMI>=18.5]=2
+hn_all$HE_BMI_cate[hn_all$HE_BMI>=25]=3
+
+# edu 초중/고/대 3개로 나누기
+
+hn_all$edu3G[hn_all$edu == 1] <- 1
+hn_all$edu3G[hn_all$edu == 2] <- 1
+hn_all$edu3G[hn_all$edu == 3] <- 2
+hn_all$edu3G[hn_all$edu == 4] <- 3
+
+### 범주형 factor 처리
+
+hn_all$year <- as.factor(hn_all$year)
+
+hn_all$occp <- as.factor(hn_all$occp)
+
+hn_all$edu <- as.factor(hn_all$edu)
+
+hn_all$edu3G <- as.factor(hn_all$edu3G)
+
+hn_all$BS3_1 <- as.factor(hn_all$BS3_1)
+
+hn_all$EC_wht_5 <- as.factor(hn_all$EC_wht_5)
+
+hn_all$marri_1 <- as.factor(hn_all$marri_1)
+
+hn_all$sm_presnt <- as.factor(hn_all$sm_presnt)
+
+hn_all$dr_month <- as.factor(hn_all$dr_month)
+
+hn_all$pa_walk <- as.factor(hn_all$pa_walk)
+
+hn_all$pa_aerobic <- as.factor(hn_all$pa_aerobic)
+
+hn_all$HE_BMI_band <- as.factor(hn_all$HE_BMI_band)
+
+hn_all$HE_BMI_cate <- as.factor(hn_all$HE_BMI_cate)
+
+hn_all$age_cate <- as.factor(hn_all$age_cate)
+
+hn_all$age_band <- as.factor(hn_all$age_band)
+
+hn_all$ainc_band <- as.factor(hn_all$ainc_band)
+
+hn_all$incm <- as.factor(hn_all$incm)
+
+########### 직업군 묶기 ############
+
+# Manual workers were elementary workers, craft and related trades workers, equipment, machine operation and assembling workers, and agricultural, forestry and fishery workers.
+
+#  Non-manual workers consisted of clerks, professionals and related workers, managers.
+
+# The rest are Service/sales workers.
+
+# 1. 관리자, 전문가 및 관련 종사자
+# 2. 사무종사자
+# 3. 서비스 및 판매 종사자
+# 4. 농림어업 숙련 종사자
+# 5. 기능원, 장치․기계조작 및 조립종사자
+# 6. 단순노무종사자
+# 7. 무직(주부, 학생 등)
+
+# Manual workers(4,5,6) = 1 / Non-manual workers(1,2) = 2 / Service/sales workers(3) = 3 / not employed(7) = 4
+# 직업그룹 4개
+
+hn_all$occp4G[hn_all$occp == 4] <- 1
+hn_all$occp4G[hn_all$occp == 5] <- 1
+hn_all$occp4G[hn_all$occp == 6] <- 1
+hn_all$occp4G[hn_all$occp == 1] <- 2
+hn_all$occp4G[hn_all$occp == 2] <- 2
+hn_all$occp4G[hn_all$occp == 3] <- 3
+hn_all$occp4G[hn_all$occp == 7] <- 4
+
+hn_all$occp4G <- as.factor(hn_all$occp4G)
+
+
+# 데이터 분할(남녀)
+
+hn_all_m <- hn_all[hn_all$sex == 1,]
+hn_all_f <- hn_all[hn_all$sex == 2,]
+
+
+# 성별마다 BMI 3분위수, 4분위수로 나눈 HE_BMI_3P, HE_BMI_4P 변수 새로 만들기.
+
+# 남자 BMI 3분위수, 4분위수
+
+round(quantile(hn_all_m$HE_BMI, c(0.335, 0.665)), 2) # 3등분
+
+round(quantile(hn_all_m$HE_BMI, c(0.25, 0.50, 0.75)), 2) # 4등분
+
+## 3등분(23.03 / 25.56), 4등분(22.31, 24.27, 26.36) 기준으로 새로운 변수 만들기
+
+# 3등분
+
+hn_all_m$HE_BMI_3P = 1
+hn_all_m$HE_BMI_3P[hn_all_m$HE_BMI>=23.03]=2
+hn_all_m$HE_BMI_3P[hn_all_m$HE_BMI>=25.56]=3
+
+hn_all_m$HE_BMI_3P <- as.factor(hn_all_m$HE_BMI_3P)
+
+# 4등분
+
+hn_all_m$HE_BMI_4P = 1
+hn_all_m$HE_BMI_4P[hn_all_m$HE_BMI>=22.31]=2
+hn_all_m$HE_BMI_4P[hn_all_m$HE_BMI>=24.27]=3
+hn_all_m$HE_BMI_4P[hn_all_m$HE_BMI>=26.36]=4
+
+hn_all_m$HE_BMI_4P <- as.factor(hn_all_m$HE_BMI_4P)
+
+
+# 여자 BMI 3분위수, 4분위수
+
+round(quantile(hn_all_f$HE_BMI, c(0.335, 0.665)), 2) # 3등분
+
+round(quantile(hn_all_f$HE_BMI, c(0.25, 0.50, 0.75)), 2) # 4등분
+
+## 3등분(21.7 / 24.6), 4등분(20.95, 23.07, 25.62) 기준으로 새로운 변수 만들기
+
+# 3등분
+
+hn_all_f$HE_BMI_3P = 1
+hn_all_f$HE_BMI_3P[hn_all_f$HE_BMI>=21.7]=2
+hn_all_f$HE_BMI_3P[hn_all_f$HE_BMI>=24.6]=3
+
+hn_all_f$HE_BMI_3P <- as.factor(hn_all_f$HE_BMI_3P)
+
+# 4등분
+
+hn_all_f$HE_BMI_4P = 1
+hn_all_f$HE_BMI_4P[hn_all_f$HE_BMI>=20.95]=2
+hn_all_f$HE_BMI_4P[hn_all_f$HE_BMI>=23.07]=3
+hn_all_f$HE_BMI_4P[hn_all_f$HE_BMI>=25.62]=4
+
+hn_all_f$HE_BMI_4P <- as.factor(hn_all_f$HE_BMI_4P)
+
+##### 직업 그룹 4개 다중 로지스틱 회귀
+
+
+### 남자그룹
+
+logit_model5 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_4P+
+    year,
+  data = hn_all_m, family = binomial())
+
+# 다중공선성 확인
+
+# BS3_1이 10.86, sm_presnt가 9.78 로 서로 영향. 따라서 sm_presnt만 선택.
+
+vif(logit_model5)
+
+summary(logit_model5)
+
+# 오즈비와 신뢰구간
+
+extractOR(logit_model5)
+
+# 신뢰구간 plot
+
+ORplot(logit_model5)
+
+ORplot(logit_model5, type = 2, main = "Plot for Odds Ratios", show.OR = FALSE, show.CI = TRUE, pch=15, lwd=3, col=c("blue", "red"))
+
+ORplot(logit_model5, type = 3, main = "Plot for Odds Ratios", show.OR = FALSE, show.CI = TRUE, pch=15, lwd=3, col=c("blue", "red"))
+
+## ROC curve, AUROC계수 등 주요 값 확인 ##
+
+# ROC Curve #
+
+# score test data
+
+hn_all_m$model5_score <- predict(logit_model5, type='response', hn_all_m)
+
+model5_pred <- prediction(hn_all_m$model5_score, hn_all_m$HE_DM)
+
+model5_HE_DM <- performance(model5_pred, "tpr", "fpr")
+
+# ROC - Model performance plot
+
+plot(model5_HE_DM, lwd=2, colorize=TRUE, main="ROC Model 5 : Logistic Regression Performance")
+lines(x=c(0, 1), y=c(0, 1), col="red", lwd=1, lty=3);
+lines(x=c(1, 0), y=c(0, 1), col="green", lwd=1, lty=4)
+
+model5_AUROC <- 
+  round(performance(model5_pred, measure = "auc")@y.values[[1]]*100, 2)
+
+cat("AUROC: ",model5_AUROC)
+
+
+
+## 조절효과1 (가설2) 비만이 당뇨에 미치는 영향에서 직업의 조절효과
+
+# 직업 : 조절변수, 비만 : 독립변수, 당뇨 : 종속변수, occp*HE_BMI_band 변수 추가
+
+logit_inter9 <- glm(
+  HE_DM ~ 
+    HE_BMI_band*occp4G,
+  data = hn_all_m, family = binomial())
+
+# occp(직업)와 HE_BMI_band(비만)의 평균중심화(centerd mean) 상호작용 
+
+# jtools 라이브러리 활용
+
+summ(logit_inter9)
+
+summ(logit_inter9, scale = TRUE)
+
+# 상호작용 plot
+
+# 범주형 변수와 범주형 변수의 상호작용 그래프는 interact_plot 함수
+# modx인자는 조절변수.
+
+cat_plot(logit_inter9, pred="HE_BMI_band", modx="occp4G", geom = "line")
+
+cat_plot(logit_inter9, pred="HE_BMI_band", modx="occp4G")
+
+cat_plot(logit_inter9, pred="HE_BMI_band", modx="occp4G", geom = "bar")
+
+
+## 조절효과2 / 직업과 BMI, occp*HE_BMI 변수 추가
+# 직업 : 조절변수, 체질량 : 독립변수, 당뇨 : 종속변수, occp*HE_BMI 변수 추가)
+
+logit_inter10 <- glm(
+  HE_DM ~ 
+    HE_BMI*occp4G,
+  data = hn_all_m, family = binomial())
+
+# occp(직업)와 HE_BMI(체질량)의 평균중심화(centerd mean) 상호작용 
+
+# jtools 라이브러리 활용
+
+summ(logit_inter10)
+
+summ(logit_inter10, scale = TRUE)
+
+# 상호작용 plot
+# 범주형 변수와 연속형 변수의 상호작용 그래프는 interact_plot 함수
+
+interact_plot(logit_inter10, pred="HE_BMI", modx="occp4G")
+
+
+
+
+
+
+
+############  남자그룹 끝
+
+
+
+
+### 여자그룹
+
+logit_model6 <- glm(
+  HE_DM ~ 
+    occp4G+
+    # BS3_1+
+    edu+
+    ainc_band+
+    age_cate+
+    # EC_wht_5+
+    sm_presnt+
+    dr_month+
+    pa_walk+
+    # pa_aerobic+
+    HE_BMI_4P+
+    year,
+  data = hn_all_f, family = binomial())
+
+# 다중공선성 확인
+
+# BS3_1이 10.86, sm_presnt가 9.78 로 서로 영향. 따라서 sm_presnt만 선택.
+
+vif(logit_model6)
+
+summary(logit_model6)
+
+
+# 오즈비와 신뢰구간
+
+extractOR(logit_model6)
+
+# 신뢰구간 plot
+
+ORplot(logit_model6)
+
+ORplot(logit_model6, type = 2, main = "Plot for Odds Ratios", show.OR = FALSE, show.CI = TRUE, pch=15, lwd=3, col=c("blue", "red"))
+
+ORplot(logit_model6, type = 3, main = "Plot for Odds Ratios", show.OR = FALSE, show.CI = TRUE, pch=15, lwd=3, col=c("blue", "red"))
+
+## ROC curve, AUROC계수 등 주요 값 확인 ##
+
+# ROC Curve #
+
+# score test data
+
+hn_all_f$model6_score <- predict(logit_model6, type='response', hn_all_f)
+
+model6_pred <- prediction(hn_all_f$model6_score, hn_all_f$HE_DM)
+
+model6_HE_DM <- performance(model6_pred, "tpr", "fpr")
+
+# ROC - Model performance plot
+
+plot(model6_HE_DM, lwd=2, colorize=TRUE, main="ROC Model 6 : Logistic Regression Performance")
+lines(x=c(0, 1), y=c(0, 1), col="red", lwd=1, lty=3);
+lines(x=c(1, 0), y=c(0, 1), col="green", lwd=1, lty=4)
+
+model6_AUROC <- 
+  round(performance(model6_pred, measure = "auc")@y.values[[1]]*100, 2)
+
+cat("AUROC: ",model6_AUROC)
+
+
+## 조절효과1 (가설2) 비만이 당뇨에 미치는 영향에서 직업의 조절효과
+
+# 직업 : 조절변수, 비만 : 독립변수, 당뇨 : 종속변수, occp*HE_BMI_band 변수 추가
+
+logit_inter11 <- glm(
+  HE_DM ~ 
+    HE_BMI_band*occp4G,
+  data = hn_all_f, family = binomial())
+
+# occp(직업)와 HE_BMI_band(비만)의 평균중심화(centerd mean) 상호작용 
+
+# jtools 라이브러리 활용
+
+summ(logit_inter11)
+
+summ(logit_inter11, scale = TRUE)
+
+# 상호작용 plot
+
+# 범주형 변수와 범주형 변수의 상호작용 그래프는 interact_plot 함수
+# modx인자는 조절변수.
+
+cat_plot(logit_inter11, pred="HE_BMI_band", modx="occp4G", geom = "line")
+
+cat_plot(logit_inter11, pred="HE_BMI_band", modx="occp4G")
+
+cat_plot(logit_inter11, pred="HE_BMI_band", modx="occp4G", geom = "bar")
+
+## 조절효과2 / 직업과 BMI, occp*HE_BMI 변수 추가
+# 직업 : 조절변수, 체질량 : 독립변수, 당뇨 : 종속변수, occp*HE_BMI 변수 추가)
+
+logit_inter12 <- glm(
+  HE_DM ~ 
+    HE_BMI*occp4G,
+  data = hn_all_f, family = binomial())
+
+# occp(직업)와 HE_BMI(체질량)의 평균중심화(centerd mean) 상호작용 
+
+# jtools 라이브러리 활용
+
+summ(logit_inter12)
+
+summ(logit_inter12, scale = TRUE)
+
+# 상호작용 plot
+# 범주형 변수와 연속형 변수의 상호작용 그래프는 interact_plot 함수
+
+interact_plot(logit_inter12, pred="HE_BMI", modx="occp4G")
+
+
+######## 여자그룹 끝
+
+```
+
